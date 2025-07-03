@@ -128,7 +128,7 @@ class ImageOCRByPaddleOCR:
              x1, y1 = int(x_offset), int(y_offset)
              x2, y2 = int(x_offset + width), int(y_offset + height)
              # Draw a black rectangle on the mask image
-             cv2.rectangle(masked_img, (x1, y1), (x2, y2), (0, 0, 0), -1)
+             cv2.rectangle(masked_img, (x1, y1), (x2, y2), (255, 0, 0), 1)
 
         masked_img = torch.from_numpy(np.array(masked_img).astype(np.float32) / 255.0).unsqueeze(0)
 
