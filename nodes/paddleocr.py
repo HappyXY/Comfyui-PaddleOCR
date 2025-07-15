@@ -383,7 +383,6 @@ class TextImageOverLay:
             raise ValueError(f"Font file '{font_file}' does not exist at path: {font_path}")
         if not text:
             raise ValueError("Text cannot be empty.")
-        image.save('before_draw.png')
         for single_text, x_offset_str, y_offset_str, text_width_str, text_height_str, text_color_str, align in zip(text_list, x_offset_list, y_offset_list, text_width_list, text_height_list, text_color_list, align_list):
             if not single_text.strip():
                 continue
@@ -434,7 +433,6 @@ class TextImageOverLay:
                     stroke_width=stroke_width,
                     stroke_fill=stroke_color,
                     )
-                image.save(f'after_draw_{single_text}_{i}.png')
         result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
         #print("!!!!!!!!!! result_img shape", result_img.shape)
         return result_img
