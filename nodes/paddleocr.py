@@ -207,13 +207,18 @@ class CopyTransPostprocess:
                 }
                 }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "image")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "IMAGE")
+    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "alignment_methods", "image")
     FUNCTION = "CopyTranslationPostprocess"
 
     CATEGORY = "postprocessingTool"
 
     def CopyTranslationPostprocess(self, image, copyTransRes):
+
+        image = image[0] * 255.0
+        image = image.clamp(0, 255).numpy().round().astype(np.uint8)
+        print("!!!!!!!!!! image shape is", image.shape)
+
         json_start = copyTransRes.find('{')
         json_end = copyTransRes.rfind('}') + 1
         print(copyTransRes[json_start:json_end])
@@ -229,12 +234,15 @@ class CopyTransPostprocess:
         text_colors=[]
 
         all_boxes = []
+        alignment_methods = []
         # Extract text and bounding box information
         #for line in ocr_results:
         for index in range(len(result_list)):
              copy_trans_re = result_list[index]
              print("copy_trans_re",copy_trans_re)
              bbox = copy_trans_re.get('bbox', [0, 0, 0, 0])
+             alignment_method = copy_trans_re.get('alignment', 'default')
+             alignment_methods.append(alignment_method)
              all_boxes.append(bbox)
              x1, y1, x2, y2 = bbox
              x_offsets.append(str(x1))
@@ -249,7 +257,18 @@ class CopyTransPostprocess:
 
              text_color = copy_trans_re.get('text_color', '#FFFFFF')
              text_colors.append(text_color)
-             cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 0)
+             #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
+             overlay = image.copy()
+             alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
+
+             # 在 overlay 上画实心矩形（厚度 = -1 表示填充）
+             cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 0, 0), thickness=-1)
+
+             # 将 overlay 合成到原图（在框区域做加权）
+             cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    
+             # add red box to the original image
+             #cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 0)
         
         all_text=";".join(result)
         x_offsets=";".join(x_offsets)
@@ -257,9 +276,10 @@ class CopyTransPostprocess:
         widths=";".join(widths)
         heights=";".join(heights)
         text_colors=";".join(text_colors)
-        image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
-
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, image
+        alignment_methods=";".join(alignment_methods)
+        image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+        print("result image shape is", image.shape)
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, alignment_methods, image
 
 
 class TextImageOverLay:
@@ -277,7 +297,7 @@ class TextImageOverLay:
                 "text": ("STRING",{"default": "text", "multiline": True},
                 ),
                 "font_file": (FONT_LIST,),
-                "align": (["center", "left", "right"],),
+                "align": ("STRING", {"multiline": True},),
                 "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
                 "leading": ("INT",{"default": 8, "min": 0, "max": 8096, "step": 1},),
                 "font_size": ("INT",{"default": 72, "min": 1, "max": 2500, "step": 1},),
@@ -344,12 +364,15 @@ class TextImageOverLay:
         text_width_list = re.split('[,;]+', text_width)
         text_height_list = re.split('[,;]+', text_height)
         text_color_list = re.split('[,;]+', text_color)
+        align_list = re.split('[,;]+', align)
 
         print("!!!!!!!!!! text_list", text_list)
         print("!!!!!!!!!! x_offset_list", x_offset_list)        
         print("!!!!!!!!!! y_offset_list", y_offset_list)
         print("!!!!!!!!!! text_width_list", text_width_list)
         print("!!!!!!!!!! text_height_list", text_height_list)
+        print("!!!!!!!!!! text_color_list", text_color_list)
+        print("!!!!!!!!!! align_list", align_list)
 
         if len(text_list) != len(x_offset_list) or len(text_list) != len(y_offset_list) or \
            len(text_list) != len(text_width_list) or len(text_list) != len(text_height_list):
@@ -361,7 +384,7 @@ class TextImageOverLay:
         if not text:
             raise ValueError("Text cannot be empty.")
         image.save('before_draw.png')
-        for single_text, x_offset_str, y_offset_str, text_width_str, text_height_str, text_color_str in zip(text_list, x_offset_list, y_offset_list, text_width_list, text_height_list, text_color_list):
+        for single_text, x_offset_str, y_offset_str, text_width_str, text_height_str, text_color_str, align in zip(text_list, x_offset_list, y_offset_list, text_width_list, text_height_list, text_color_list, align_list):
             if not single_text.strip():
                 continue
             paragraphs = single_text.split('\n')
@@ -370,6 +393,7 @@ class TextImageOverLay:
             text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
             text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
             text_height_single_paragraph = text_height / len(paragraphs)
+            align = align.strip().lower() if align else 'center'  # Default to center if align is not provided
             for i, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
                 if not paragraph:
@@ -385,7 +409,7 @@ class TextImageOverLay:
                 draw = ImageDraw.Draw(image)
                 # 计算文本框的宽度和高度
                 bbox = font.getbbox(paragraph)  # (left, top, right, bottom)
-
+                print(f"Bounding box for paragraph '{paragraph}': {bbox}")
                 # 根据 align 参数重新计算 x 坐标
                 if align == "left":
                     x_text = x_offset_i
@@ -395,9 +419,15 @@ class TextImageOverLay:
                     x_text = int(x_offset_i + text_width_i - (bbox[2]-bbox[0]))
                 else:
                     x_text = int(x_offset_i + (text_width_i / 2) - (bbox[2]-bbox[0])/2)  # 默认为center对齐
+                
+                ascent, descent = font.getmetrics()
+                print(f"Ascent: {ascent}, Descent: {descent} for font size {font_computed_size}")
+                # 文字顶部坐标 = 基线坐标 - ascent
                 y_text = y_offset_i
+                top_y = y_text - np.ceil(ascent*0.2)
+
                 draw.text(
-                    xy=(x_text, y_text),
+                    xy=(x_text, top_y),
                     text=paragraph,
                     fill=text_color_str,
                     font=font,
