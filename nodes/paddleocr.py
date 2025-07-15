@@ -403,6 +403,7 @@ class TextImageOverLay:
                 text_width_i = text_width
                 text_height_i = text_height_single_paragraph
                 font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width_i, text_height_i, max_size=font_size)
+                font_computed_size = font_computed_size - 1
                 print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_computed_size))
                 draw = ImageDraw.Draw(image)
