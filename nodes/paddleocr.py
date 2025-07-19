@@ -18,6 +18,7 @@ import torch
 from torchvision import transforms
 from paddleocr import PaddleOCR
 import tempfile
+import folder_paths
 
 models_dir = folder_paths.models_dir
 
@@ -203,28 +204,28 @@ class CopyTransPostprocess:
         return {"required": 
                 {
                     "image": ("IMAGE", ),
-                    "copyTransRes": ("STRING", {"multiline": True}),
+                    "TransRes": ("STRING", {"multiline": True}),
                 }
                 }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "IMAGE")
     RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "alignment_methods", "image")
-    FUNCTION = "CopyTranslationPostprocess"
+    FUNCTION = "TranslationPostprocess"
 
     CATEGORY = "postprocessingTool"
 
-    def CopyTranslationPostprocess(self, image, copyTransRes):
+    def TranslationPostprocess(self, image, TransRes):
 
         image = image[0] * 255.0
         image = image.clamp(0, 255).numpy().round().astype(np.uint8)
         print("!!!!!!!!!! image shape is", image.shape)
 
-        json_start = copyTransRes.find('{')
-        json_end = copyTransRes.rfind('}') + 1
-        print(copyTransRes[json_start:json_end])
+        json_start = TransRes.find('{')
+        json_end = TransRes.rfind('}') + 1
+        print(TransRes[json_start:json_end])
         if json_start >= 0 and json_end > json_start:
-            result_json = json.loads(copyTransRes[json_start:json_end])
-        result_list = result_json['copytext_translation_results']
+            result_json = json.loads(TransRes[json_start:json_end])
+        result_list = result_json['text_translation_results']
         
         result = []
         x_offsets=[]
@@ -251,7 +252,7 @@ class CopyTransPostprocess:
              heights.append(str(y2-y1))
 
              #text = line[1][0]
-             text = copy_trans_re.get('chinese_translation', '')
+             text = copy_trans_re.get('translated_text', '')
              print("text",text)
              result.append(text)
 
@@ -438,10 +439,48 @@ class TextImageOverLay:
         #print("!!!!!!!!!! result_img shape", result_img.shape)
         return result_img
 
+class SaveText:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"forceInput": True}),
+                "file_name": ("STRING", {"default": 'result.txt', "multiline": False}),
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_text"
+    OUTPUT_NODE = True
+    CATEGORY = "text"
+
+    def save_text(self, text, file_name):
+        output_dir = folder_paths.get_output_directory()
+        save_path = os.path.join(output_dir, file_name)
+        #get the suffix of the file_name
+        suffix = os.path.splitext(file_name)[1].lower()
+        results = []
+        if suffix == '.txt':
+            # Write the text to the file
+            with open(save_path, 'w', encoding='utf-8') as file:
+                file.write(text)
+            
+        
+        if suffix == '.json':
+            # Write the text to a json file
+            import json
+            with open(save_path, 'w', encoding='utf-8') as file:
+                json.dump(text, file, ensure_ascii=False, indent=4)
+        result={"text": text, "file_name": file_name, "type": "output"}
+        results.append(result)
+
+        return {"ui": {"text": results}}
+
 NODE_CLASS_MAPPINGS = {
     "Image OCR by PaddleOCR": ImageOCRByPaddleOCR,
     "BBOX to Mask": BBOXTOMASK,
     "Copy Translation Postprocess": CopyTransPostprocess,
-    "Text Image Overlay": TextImageOverLay
+    "Text Image Overlay": TextImageOverLay,
+    "Save Text": SaveText
 }
 
