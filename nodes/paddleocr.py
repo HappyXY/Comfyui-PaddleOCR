@@ -197,35 +197,35 @@ class BBOXTOMASK:
         #print('!!!!!!!! mask shape', masked_img.shape)
         return masked_img
 
-class CopyTransPostprocess:
+class OcrResultPostprocess:
 
     @classmethod
     def INPUT_TYPES(s):
         return {"required": 
                 {
                     "image": ("IMAGE", ),
-                    "TransRes": ("STRING", {"multiline": True}),
+                    "ocrRes": ("STRING", {"multiline": True}),
                 }
                 }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "alignment_methods", "image")
-    FUNCTION = "TranslationPostprocess"
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "alignment_methods", "image", "mask_img")
+    FUNCTION = "OcrResultPostprocess"
 
     CATEGORY = "postprocessingTool"
 
-    def TranslationPostprocess(self, image, TransRes):
+    def OcrResultPostprocess(self, image, ocrRes):
 
         image = image[0] * 255.0
         image = image.clamp(0, 255).numpy().round().astype(np.uint8)
         print("!!!!!!!!!! image shape is", image.shape)
 
-        json_start = TransRes.find('{')
-        json_end = TransRes.rfind('}') + 1
-        print(TransRes[json_start:json_end])
+        json_start = ocrRes.find('{')
+        json_end = ocrRes.rfind('}') + 1
+        print(ocrRes[json_start:json_end])
         if json_start >= 0 and json_end > json_start:
-            result_json = json.loads(TransRes[json_start:json_end])
-        result_list = result_json['text_translation_results']
+            result_json = json.loads(ocrRes[json_start:json_end])
+        result_list = result_json['text_information']
         
         result = []
         x_offsets=[]
@@ -237,12 +237,14 @@ class CopyTransPostprocess:
         all_boxes = []
         alignment_methods = []
         # Extract text and bounding box information
+        mask_img = np.array(Image.new("RGB", (image.shape[1], image.shape[0]), (0, 0, 0)))
+        
         #for line in ocr_results:
         for index in range(len(result_list)):
-             copy_trans_re = result_list[index]
-             print("copy_trans_re",copy_trans_re)
-             bbox = copy_trans_re.get('bbox', [0, 0, 0, 0])
-             alignment_method = copy_trans_re.get('alignment', 'default')
+             ocr_result_re = result_list[index]
+             print("ocr_result_re is ", ocr_result_re)
+             bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
+             alignment_method = ocr_result_re.get('alignment', 'default')
              alignment_methods.append(alignment_method)
              all_boxes.append(bbox)
              x1, y1, x2, y2 = bbox
@@ -252,11 +254,11 @@ class CopyTransPostprocess:
              heights.append(str(y2-y1))
 
              #text = line[1][0]
-             text = copy_trans_re.get('translated_text', '')
+             text = ocr_result_re.get('text', '')
              print("text",text)
              result.append(text)
 
-             text_color = copy_trans_re.get('text_color', '#FFFFFF')
+             text_color = ocr_result_re.get('text_color', '#FFFFFF')
              text_colors.append(text_color)
              #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
              overlay = image.copy()
@@ -269,7 +271,7 @@ class CopyTransPostprocess:
              cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
     
              # add red box to the original image
-             #cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 0)
+             cv2.rectangle(mask_img, (x1, y1), (x2, y2), (255, 255, 255), -1)
         
         all_text=";".join(result)
         x_offsets=";".join(x_offsets)
@@ -279,8 +281,10 @@ class CopyTransPostprocess:
         text_colors=";".join(text_colors)
         alignment_methods=";".join(alignment_methods)
         image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+        mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
+        print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, alignment_methods, image
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, alignment_methods, image, mask_img
 
 
 class TextImageOverLay:
@@ -295,20 +299,19 @@ class TextImageOverLay:
         return {
             "required": {
                 "background_image": ("IMAGE",),
-                "text": ("STRING",{"default": "text", "multiline": True},
-                ),
+                "text": ("STRING",{"default": "text", "multiline": True},),
                 "font_file": (FONT_LIST,),
                 "align": ("STRING", {"multiline": True},),
-                "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
-                "leading": ("INT",{"default": 8, "min": 0, "max": 8096, "step": 1},),
-                "font_size": ("INT",{"default": 72, "min": 1, "max": 2500, "step": 1},),
+                "font_size": ("STRING", {"default":"", "multiline": True},),
                 "text_color": ("STRING", {"multiline": True},),
-                "stroke_width": ("INT",{"default": 0, "min": 0, "max": 8096, "step": 1},),
-                "stroke_color": ("STRING",{"default": "#FF8000"},),
                 "x_offset": ("STRING", {"multiline": True},),
                 "y_offset": ("STRING", {"multiline": True},),
-                "text_width": ("STRING", {"multiline": True},),
-                "text_height": ("STRING", {"multiline": True},),
+                "text_width": ("STRING", {"default":"", "multiline": True},),
+                "text_height": ("STRING", {"default":"", "multiline": True},),
+                "stroke_width": ("INT",{"default": 0, "min": 0, "max": 8096, "step": 1},),
+                "stroke_color": ("STRING",{"default": "#FF8000"},),
+                "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
+                "leading": ("INT",{"default": 8, "min": 0, "max": 8096, "step": 1},),
             },
         }
 
@@ -362,38 +365,95 @@ class TextImageOverLay:
         text_list = re.split('[,;]+', text)
         x_offset_list = re.split('[,;]+', x_offset)
         y_offset_list = re.split('[,;]+', y_offset)
-        text_width_list = re.split('[,;]+', text_width)
-        text_height_list = re.split('[,;]+', text_height)
-        text_color_list = re.split('[,;]+', text_color)
-        align_list = re.split('[,;]+', align)
+        text_width_list = []
+        text_height_list = []
+        font_size_list = []
+        align_list = []
+        if text_width is not None and text_width.strip() != "":
+            print('!!!!!!!!', text_width) 
+            text_width_list = re.split('[, ;]+', text_width)
+            if len(text_list) != len(text_width_list):
+                raise ValueError("The number of text and text_widths must be the same.")
+        if text_height is not None and text_height.strip() != "":
+            print('!!!!!!!!', text_height)
+            text_height_list = re.split('[, ;]+', text_height)
+            if len(text_list) != len(text_height_list):
+                raise ValueError("The number of text, text_widths, and text_heights must be the same.")
+        if font_size is not None and font_size.strip() != "":
+            print('!!!!!!!!!!', font_size)
+            font_size_list = re.split('[, ;]+', font_size)
+            if len(text_list) != len(font_size_list):
+                raise ValueError("The number of text and font_size must be the same.")
+        
+        #must provide one between the font_size, text_height, text_width
+        if len(font_size_list) == 0 and len(text_height_list) == 0 and len(text_width_list) == 0:
+            raise ValueError("Must provide one between the font_size, text_height, text_width")
+
+        if align is not None:
+            align_list = re.split('[, ;]+', align)
+            if len(text_list) != len(align_list):
+                raise ValueError("The number of text and align must be the same.")
+
+        if text_color is not None:
+            text_color_list = re.split('[,;]+', text_color)
+            if len(text_list) != len(text_color_list):
+                raise ValueError("The number of text and text_color must be the same.")               
 
         print("!!!!!!!!!! text_list", text_list)
         print("!!!!!!!!!! x_offset_list", x_offset_list)        
         print("!!!!!!!!!! y_offset_list", y_offset_list)
         print("!!!!!!!!!! text_width_list", text_width_list)
         print("!!!!!!!!!! text_height_list", text_height_list)
+        print("!!!!!!!!!! font_size_list", font_size_list)
         print("!!!!!!!!!! text_color_list", text_color_list)
         print("!!!!!!!!!! align_list", align_list)
 
-        if len(text_list) != len(x_offset_list) or len(text_list) != len(y_offset_list) or \
-           len(text_list) != len(text_width_list) or len(text_list) != len(text_height_list):
-            raise ValueError("The number of text, x_offsets, y_offset, text_widths, and text_heights must be the same.")
+        if len(text_list) != len(x_offset_list) or len(text_list) != len(y_offset_list):
+            raise ValueError("The number of text, x_offsets, and y_offsets must be the same.")
+        
         if not font_path:
             raise ValueError(f"Font file '{font_file}' not found in the font directory.")
         if not os.path.exists(font_path):
             raise ValueError(f"Font file '{font_file}' does not exist at path: {font_path}")
         if not text:
             raise ValueError("Text cannot be empty.")
-        for single_text, x_offset_str, y_offset_str, text_width_str, text_height_str, text_color_str, align in zip(text_list, x_offset_list, y_offset_list, text_width_list, text_height_list, text_color_list, align_list):
+        for i, (single_text, x_offset_str, y_offset_str, text_color_str) in enumerate(zip(text_list, x_offset_list, y_offset_list, text_color_list)):
             if not single_text.strip():
                 continue
             paragraphs = single_text.split('\n')
             x_offset = int(x_offset_str.strip()) if x_offset_str.strip() else 0
             y_offset = int(y_offset_str.strip()) if y_offset_str.strip() else 0
-            text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
-            text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
+
+            text_width = 0
+            text_height = 0
+            align = 'center'
+            font_size_str = None
+            if len(font_size_list)>0:
+                font_size_str = font_size_list[i]
+                font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, int(font_size_str)))
+            if len(text_width_list) > 0:
+                text_width_str = text_width_list[i]
+                text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
+            elif len(font_size_list)>0:
+                bbox = font.getbbox(paragraphs[0])
+                text_width = int(bbox[2] - bbox[0]) if len(bbox) > 2 else 0
+            
+            if len(text_height_list) > 0:
+                text_height_str = text_height_list[i]
+                text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
+            elif len(font_size_list)>0:
+                bbox = font.getbbox(paragraphs[0])
+                text_height = int(bbox[3] - bbox[1]) if len(bbox) > 3 else 0
             text_height_single_paragraph = text_height / len(paragraphs)
-            align = align.strip().lower() if align else 'center'  # Default to center if align is not provided
+            print('!!!!!!!!! font_size_str is', font_size_str)
+            if len(align_list)>0:
+                align = align_list[i]
+                align = align.strip().lower() if align else 'center'  # Default to center if align is not provided
+            elif len(text_width_list) > 0:
+                align = 'center'  # Default to center if align is not provided
+            elif len(font_size_list)>0:
+                align = 'left'  # Default to left if align is not provided
+
             for i, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
                 if not paragraph:
@@ -403,10 +463,14 @@ class TextImageOverLay:
                 y_offset_i = y_offset + i * text_height_single_paragraph
                 text_width_i = text_width
                 text_height_i = text_height_single_paragraph
-                font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width_i, text_height_i, max_size=font_size)
-                font_computed_size = font_computed_size - 1
-                print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
-                font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_computed_size))
+                if font_size_str is not None:
+                    font_size = int(font_size_str.strip()) if font_size_str.strip() else 0
+                else:
+                    font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width_i, text_height_i, max_size=2500)
+                    font_computed_size = font_computed_size - 1
+                    print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
+                    font_size = font_computed_size
+                font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_size))
                 draw = ImageDraw.Draw(image)
                 # 计算文本框的宽度和高度
                 bbox = font.getbbox(paragraph)  # (left, top, right, bottom)
@@ -422,7 +486,7 @@ class TextImageOverLay:
                     x_text = int(x_offset_i + (text_width_i / 2) - (bbox[2]-bbox[0])/2)  # 默认为center对齐
                 
                 ascent, descent = font.getmetrics()
-                print(f"Ascent: {ascent}, Descent: {descent} for font size {font_computed_size}")
+                print(f"Ascent: {ascent}, Descent: {descent} for font size {font_size}")
                 # 文字顶部坐标 = 基线坐标 - ascent
                 y_text = y_offset_i
                 top_y = y_text - np.ceil(ascent*0.2)
@@ -479,7 +543,7 @@ class SaveText:
 NODE_CLASS_MAPPINGS = {
     "Image OCR by PaddleOCR": ImageOCRByPaddleOCR,
     "BBOX to Mask": BBOXTOMASK,
-    "Copy Translation Postprocess": CopyTransPostprocess,
+    "OCR Result Postprocess": OcrResultPostprocess,
     "Text Image Overlay": TextImageOverLay,
     "Save Text": SaveText
 }
