@@ -535,7 +535,7 @@ class SaveText:
             import json
             with open(save_path, 'w', encoding='utf-8') as file:
                 json.dump(text, file, ensure_ascii=False, indent=4)
-        result={"text": text, "file_name": file_name, "type": "output"}
+        result={"text": text, "filename": file_name, "type": "output"}
         results.append(result)
 
         return {"ui": {"text": results}}
