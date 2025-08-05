@@ -208,8 +208,8 @@ class OcrResultPostprocess:
                 }
                 }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "alignment_methods", "image", "mask_img")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "image", "mask_img")
     FUNCTION = "OcrResultPostprocess"
 
     CATEGORY = "postprocessingTool"
@@ -233,6 +233,8 @@ class OcrResultPostprocess:
         widths=[]
         heights=[]
         text_colors=[]
+        font_sizes=[]
+        font_file = result_json.get('font_file', '华文楷体.ttf')
 
         all_boxes = []
         alignment_methods = []
@@ -260,6 +262,9 @@ class OcrResultPostprocess:
 
              text_color = ocr_result_re.get('text_color', '#FFFFFF')
              text_colors.append(text_color)
+
+             font_size = ocr_result_re.get('font_size', -1)
+             font_sizes.append(str(font_size))
              #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
              overlay = image.copy()
              alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
@@ -280,11 +285,12 @@ class OcrResultPostprocess:
         heights=";".join(heights)
         text_colors=";".join(text_colors)
         alignment_methods=";".join(alignment_methods)
+        font_sizes=";".join(font_sizes)
         image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
         mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
         print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, alignment_methods, image, mask_img
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, alignment_methods, font_sizes, font_file, image, mask_img
 
 
 class TextImageOverLay:
@@ -342,8 +348,15 @@ class TextImageOverLay:
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             
-            if text_width > box_width or text_height > box_height:
-                return font_size - 1  # last acceptable size
+            if text_width > 0 and text_height >0:
+                if text_width > box_width or text_height > box_height:
+                    return font_size - 1  # last acceptable size
+            elif text_width > 0:
+                if text_width > box_width:
+                    return font_size - 1  # last acceptable size
+            elif text_height > 0:
+                if text_height > box_height:
+                    return font_size - 1  # last acceptable size
 
         return max_size  # text fits even at max_size
 
@@ -426,25 +439,30 @@ class TextImageOverLay:
 
             text_width = 0
             text_height = 0
+            text_height_single_paragraph = 0
             align = 'center'
             font_size_str = None
-            if len(font_size_list)>0:
+            if len(font_size_list)> i:
                 font_size_str = font_size_list[i]
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, int(font_size_str)))
-            if len(text_width_list) > 0:
-                text_width_str = text_width_list[i]
-                text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
-            elif len(font_size_list)>0:
                 bbox = font.getbbox(paragraphs[0])
                 text_width = int(bbox[2] - bbox[0]) if len(bbox) > 2 else 0
+                text_height_single_paragraph = int(bbox[3] - bbox[1]) if len(bbox) > 3 else 0
+
+            if len(text_width_list) > i:
+                text_width_str = text_width_list[i]
+                text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
             
-            if len(text_height_list) > 0:
+            if len(text_height_list) > i:
                 text_height_str = text_height_list[i]
                 text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
-            elif len(font_size_list)>0:
-                bbox = font.getbbox(paragraphs[0])
-                text_height = int(bbox[3] - bbox[1]) if len(bbox) > 3 else 0
-            text_height_single_paragraph = text_height / len(paragraphs)
+                text_height_single_paragraph = text_height / len(paragraphs)
+            
+            if len(font_size_list) <= i and len(text_height_list) <= i and len(text_width_list) <= i:
+                print('Not provide sufficient information for font size, and set font_size to 30')
+                font_size_str = '30'
+            
+            
             print('!!!!!!!!! font_size_str is', font_size_str)
             if len(align_list)>0:
                 align = align_list[i]
@@ -474,6 +492,8 @@ class TextImageOverLay:
                 draw = ImageDraw.Draw(image)
                 # 计算文本框的宽度和高度
                 bbox = font.getbbox(paragraph)  # (left, top, right, bottom)
+                if text_height_single_paragraph == 0:
+                    text_height_single_paragraph = bbox[3] - bbox[1]
                 print(f"Bounding box for paragraph '{paragraph}': {bbox}")
                 # 根据 align 参数重新计算 x 坐标
                 if align == "left":
