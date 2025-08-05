@@ -297,16 +297,11 @@ class TextImageOverLay:
 
     @classmethod
     def INPUT_TYPES(cls):
-        current_directory = os.path.dirname(os.path.abspath(__file__))
-        font_resource_dir = os.path.join(current_directory, "font_dir")
-        FONT_DICT = {}
-        FONT_DICT.update(TextImageOverLay.collect_font_files(font_resource_dir, ('.ttf', '.otf'))) # 后缀要小写
-        FONT_LIST = list(FONT_DICT.keys())
         return {
             "required": {
                 "background_image": ("IMAGE",),
                 "text": ("STRING",{"default": "text", "multiline": True},),
-                "font_file": (FONT_LIST,),
+                "font_file": ("STRING",{"default": "华文楷体.ttf"},),
                 "align": ("STRING", {"multiline": True},),
                 "font_size": ("STRING", {"default":"", "multiline": True},),
                 "text_color": ("STRING", {"multiline": True},),
