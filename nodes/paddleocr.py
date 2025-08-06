@@ -290,7 +290,7 @@ class OcrResultPostprocess:
         mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
         print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, alignment_methods, font_sizes, font_file, image, mask_img
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, image, mask_img
 
 
 class TextImageOverLay:
