@@ -431,6 +431,12 @@ class TextImageOverLay:
             paragraphs = single_text.split('\n')
             x_offset = int(x_offset_str.strip()) if x_offset_str.strip() else 0
             y_offset = int(y_offset_str.strip()) if y_offset_str.strip() else 0
+            
+            #粗体
+            bold = False
+
+            #斜体
+            italic = False
 
             text_width = 0
             text_height = 0
@@ -466,23 +472,22 @@ class TextImageOverLay:
                 align = 'center'  # Default to center if align is not provided
             elif len(font_size_list)>0:
                 align = 'left'  # Default to left if align is not provided
-
+            
             for i, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
                 if not paragraph:
                     continue
-                #computer the x and y offsets, text width and height for each paragraph
-                x_offset_i = x_offset
-                y_offset_i = y_offset + i * text_height_single_paragraph
-                text_width_i = text_width
-                text_height_i = text_height_single_paragraph
+                #computer text width and height for each paragraph
+                #text_width_i = text_width
+                #text_height_i = text_height_single_paragraph
                 if font_size_str is not None:
                     font_size = int(font_size_str.strip()) if font_size_str.strip() else 0
                 else:
-                    font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width_i, text_height_i, max_size=2500)
+                    font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width, text_height_single_paragraph, max_size=2500)
                     font_computed_size = font_computed_size - 1
                     print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
                     font_size = font_computed_size
+                print('!!!!!!!!!! final font_size is', font_size)
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_size))
                 draw = ImageDraw.Draw(image)
                 # 计算文本框的宽度和高度
@@ -490,30 +495,61 @@ class TextImageOverLay:
                 if text_height_single_paragraph == 0:
                     text_height_single_paragraph = bbox[3] - bbox[1]
                 print(f"Bounding box for paragraph '{paragraph}': {bbox}")
-                # 根据 align 参数重新计算 x 坐标
-                if align == "left":
-                    x_text = x_offset_i
-                elif align == "center":
-                    x_text = int(x_offset_i + (text_width_i / 2) - (bbox[2]-bbox[0])/2)
-                elif align == "right":
-                    x_text = int(x_offset_i + text_width_i - (bbox[2]-bbox[0]))
+                ### 判断是否需要自动换行
+                lines = []
+                if bbox[2]-bbox[0] > text_width:
+                    # 计算文本的行数
+                    line = ""
+                    words = paragraph.split()
+                    for word in words:
+                        test_line = line + word + ' '
+                        w, _ = draw.textsize(test_line, font=font)
+                        if w <= text_width:
+                            line = test_line
+                        else:
+                            lines.append(line.strip())
+                            line = word + ' '
+                    if line:
+                        lines.append(line.strip())
                 else:
-                    x_text = int(x_offset_i + (text_width_i / 2) - (bbox[2]-bbox[0])/2)  # 默认为center对齐
+                    lines.append(paragraph)
                 
-                ascent, descent = font.getmetrics()
-                print(f"Ascent: {ascent}, Descent: {descent} for font size {font_size}")
-                # 文字顶部坐标 = 基线坐标 - ascent
-                y_text = y_offset_i
-                top_y = y_text - np.ceil(ascent*0.2)
+                for line in lines:
+                    bbox = font.getbbox(line)
+                    # 根据 align 参数重新计算 x 坐标
+                    if align == "left":
+                        x_text = x_offset
+                    elif align == "center":
+                        x_text = int(x_offset + (text_width / 2) - (bbox[2]-bbox[0])/2)
+                    elif align == "right":
+                        x_text = int(x_offset + text_width - (bbox[2]-bbox[0]))
+                    else:
+                        x_text = int(x_offset + (text_width / 2) - (bbox[2]-bbox[0])/2)  # 默认为center对齐
+                    
+                    ascent, descent = font.getmetrics()
+                    print(f"Ascent: {ascent}, Descent: {descent} for font size {font_size}")
+                    # 文字顶部坐标 = 基线坐标 - ascent
+                    top_y = y_offset - np.ceil(ascent*0.1)
 
-                draw.text(
-                    xy=(x_text, top_y),
-                    text=paragraph,
-                    fill=text_color_str,
-                    font=font,
-                    stroke_width=stroke_width,
-                    stroke_fill=stroke_color,
-                    )
+                    if bold:
+                        font = font.bold()
+                    
+                    if italic:
+                        font = font.italic()
+                    
+                    if bold and italic:
+                        font = font.bold().italic()
+
+                    draw.text(
+                        xy=(x_text, top_y),
+                        text=paragraph,
+                        fill=text_color_str,
+                        font=font,
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_color,
+                        )
+                    y_offset += text_height_single_paragraph
+        
         result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
         #print("!!!!!!!!!! result_img shape", result_img.shape)
         return result_img
