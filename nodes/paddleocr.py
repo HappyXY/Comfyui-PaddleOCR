@@ -292,6 +292,18 @@ class OcrResultPostprocess:
         print("result image shape is", image.shape)
         return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, image, mask_img
 
+def is_chinese_char(ch):
+    """判断一个字符是否是中文"""
+    code_point = ord(ch)
+    return (
+        0x4E00 <= code_point <= 0x9FFF or
+        0x3400 <= code_point <= 0x4DBF or
+        0x20000 <= code_point <= 0x2A6DF or
+        0x2A700 <= code_point <= 0x2B73F or
+        0x2B740 <= code_point <= 0x2B81F or
+        0x2B820 <= code_point <= 0x2CEAF or
+        0x3000 <= code_point <= 0x303F
+    )
 
 class TextImageOverLay:
 
@@ -500,7 +512,11 @@ class TextImageOverLay:
                 if bbox[2]-bbox[0] > text_width:
                     # 计算文本的行数
                     line = ""
-                    words = paragraph.split()
+                    if is_chinese_char(paragraph[0]):
+                        words = list(paragraph)
+                    else:
+                        words = paragraph.split()
+                    
                     for word in words:
                         test_line = line + word + ' '
                         w, _ = draw.textsize(test_line, font=font)
