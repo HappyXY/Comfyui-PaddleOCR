@@ -235,6 +235,10 @@ class OcrResultPostprocess:
         text_colors=[]
         font_sizes=[]
         font_file = result_json.get('font_file', '华文楷体.ttf')
+        # font_file is empty string, set default font file
+        if not font_file:
+            font_file = '华文楷体.ttf'
+        print("font_file is", font_file)
 
         all_boxes = []
         alignment_methods = []
@@ -381,7 +385,21 @@ class TextImageOverLay:
         FONT_DICT = {}
         FONT_DICT.update(TextImageOverLay.collect_font_files(font_resource_dir, ('.ttf', '.otf'))) # 后缀要小写
         width, height = image.size
+        print('!!!!!!!@@@@', FONT_DICT)
         font_path = FONT_DICT.get(font_file)
+        # Check if the font path exists and set to default if not provided
+        if not font_path:
+            font_path = os.path.join(font_resource_dir, '华文楷体.ttf')
+            print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
+        
+        # Check if text is provided
+        if not text or text.strip() == "":
+            raise ValueError("Text cannot be empty.")
+        
+        # Check if x_offset and y_offset are provided
+        if not x_offset or not y_offset:
+            raise ValueError("x_offset and y_offset must be provided.")
+
         text_list = re.split('[,;]+', text)
         x_offset_list = re.split('[,;]+', x_offset)
         y_offset_list = re.split('[,;]+', y_offset)
@@ -411,13 +429,10 @@ class TextImageOverLay:
 
         if align is not None:
             align_list = re.split('[, ;]+', align)
-            if len(text_list) != len(align_list):
-                raise ValueError("The number of text and align must be the same.")
+            
 
         if text_color is not None:
             text_color_list = re.split('[,;]+', text_color)
-            if len(text_list) != len(text_color_list):
-                raise ValueError("The number of text and text_color must be the same.")               
 
         print("!!!!!!!!!! text_list", text_list)
         print("!!!!!!!!!! x_offset_list", x_offset_list)        
@@ -437,7 +452,7 @@ class TextImageOverLay:
             raise ValueError(f"Font file '{font_file}' does not exist at path: {font_path}")
         if not text:
             raise ValueError("Text cannot be empty.")
-        for i, (single_text, x_offset_str, y_offset_str, text_color_str) in enumerate(zip(text_list, x_offset_list, y_offset_list, text_color_list)):
+        for i, (single_text, x_offset_str, y_offset_str) in enumerate(zip(text_list, x_offset_list, y_offset_list)):
             if not single_text.strip():
                 continue
             paragraphs = single_text.split('\n')
@@ -446,9 +461,17 @@ class TextImageOverLay:
             
             #粗体
             bold = False
-
             #斜体
             italic = False
+
+            if len(text_color_list) > i:
+                text_color_str = text_color_list[i].strip()
+            else:
+                text_color_str = '#FFFFFF'  # Default to white if not provided
+            
+            # Check if the text color is a valid hex color
+            if not re.match(r'^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$', text_color_str):
+                raise ValueError(f"Invalid text color: {text_color_str}. Must be a valid hex color code.")
 
             text_width = 0
             text_height = 0
@@ -477,12 +500,12 @@ class TextImageOverLay:
             
             
             print('!!!!!!!!! font_size_str is', font_size_str)
-            if len(align_list)>0:
+            if len(align_list)>i:
                 align = align_list[i]
                 align = align.strip().lower() if align else 'center'  # Default to center if align is not provided
-            elif len(text_width_list) > 0:
+            elif len(text_width_list) > i:
                 align = 'center'  # Default to center if align is not provided
-            elif len(font_size_list)>0:
+            else:
                 align = 'left'  # Default to left if align is not provided
             
             for i, paragraph in enumerate(paragraphs):
