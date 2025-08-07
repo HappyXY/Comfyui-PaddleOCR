@@ -250,7 +250,7 @@ class OcrResultPostprocess:
              ocr_result_re = result_list[index]
              print("ocr_result_re is ", ocr_result_re)
              bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
-             alignment_method = ocr_result_re.get('alignment', 'default')
+             alignment_method = ocr_result_re.get('alignment', 'center')
              alignment_methods.append(alignment_method)
              all_boxes.append(bbox)
              x1, y1, x2, y2 = bbox
@@ -260,14 +260,14 @@ class OcrResultPostprocess:
              heights.append(str(y2-y1))
 
              #text = line[1][0]
-             text = ocr_result_re.get('text', '')
+             text = ocr_result_re.get('text', "")
              print("text",text)
              result.append(text)
 
              text_color = ocr_result_re.get('text_color', '#FFFFFF')
              text_colors.append(text_color)
 
-             font_size = ocr_result_re.get('font_size', -1)
+             font_size = ocr_result_re.get('font_size', "")
              font_sizes.append(str(font_size))
              #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
              overlay = image.copy()
@@ -410,18 +410,14 @@ class TextImageOverLay:
         if text_width is not None and text_width.strip() != "":
             print('!!!!!!!!', text_width) 
             text_width_list = re.split('[, ;]+', text_width)
-            if len(text_list) != len(text_width_list):
-                raise ValueError("The number of text and text_widths must be the same.")
+        
         if text_height is not None and text_height.strip() != "":
             print('!!!!!!!!', text_height)
             text_height_list = re.split('[, ;]+', text_height)
-            if len(text_list) != len(text_height_list):
-                raise ValueError("The number of text, text_widths, and text_heights must be the same.")
+            
         if font_size is not None and font_size.strip() != "":
             print('!!!!!!!!!!', font_size)
             font_size_list = re.split('[, ;]+', font_size)
-            if len(text_list) != len(font_size_list):
-                raise ValueError("The number of text and font_size must be the same.")
         
         #must provide one between the font_size, text_height, text_width
         if len(font_size_list) == 0 and len(text_height_list) == 0 and len(text_width_list) == 0:
@@ -478,7 +474,7 @@ class TextImageOverLay:
             text_height_single_paragraph = 0
             align = 'center'
             font_size_str = None
-            if len(font_size_list)> i:
+            if len(font_size_list)> i and font_size_list[i].strip() != "":
                 font_size_str = font_size_list[i]
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, int(font_size_str)))
                 bbox = font.getbbox(paragraphs[0])
