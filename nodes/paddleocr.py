@@ -76,7 +76,7 @@ class ImageOCRByPaddleOCR:
 
     def ocr_by_paddleocr(self,image_input):
 
-        print('!!!!!!!!!!!image_input', image_input.shape)
+        print('image_input shape is', image_input.shape)
 
         image = image_input[0] * 255.0
         image = Image.fromarray(image.clamp(0, 255).numpy().round().astype(np.uint8))
@@ -218,7 +218,7 @@ class OcrResultPostprocess:
 
         image = image[0] * 255.0
         image = image.clamp(0, 255).numpy().round().astype(np.uint8)
-        print("!!!!!!!!!! image shape is", image.shape)
+        print("image shape is", image.shape)
 
         json_start = ocrRes.find('{')
         json_end = ocrRes.rfind('}') + 1
@@ -381,11 +381,11 @@ class TextImageOverLay:
         image = Image.fromarray(image.clamp(0, 255).numpy().round().astype(np.uint8))
         current_directory = os.path.dirname(os.path.abspath(__file__))
         font_resource_dir = os.path.join(current_directory, "font_dir")
-        print("!!!!!!!!!! font_resource_dir", font_resource_dir)
+        print("font_resource_dir is", font_resource_dir)
         FONT_DICT = {}
         FONT_DICT.update(TextImageOverLay.collect_font_files(font_resource_dir, ('.ttf', '.otf'))) # 后缀要小写
         width, height = image.size
-        print('!!!!!!!@@@@', FONT_DICT)
+        print('All aviable font files is: ', FONT_DICT)
         font_path = FONT_DICT.get(font_file)
         # Check if the font path exists and set to default if not provided
         if not font_path:
@@ -408,15 +408,15 @@ class TextImageOverLay:
         font_size_list = []
         align_list = []
         if text_width is not None and text_width.strip() != "":
-            print('!!!!!!!!', text_width) 
+            print('text_width is ', text_width) 
             text_width_list = re.split('[, ;]+', text_width)
         
         if text_height is not None and text_height.strip() != "":
-            print('!!!!!!!!', text_height)
+            print('text_height is ', text_height)
             text_height_list = re.split('[, ;]+', text_height)
             
         if font_size is not None and font_size.strip() != "":
-            print('!!!!!!!!!!', font_size)
+            print('font_size is ', font_size)
             font_size_list = re.split('[, ;]+', font_size)
         
         #must provide one between the font_size, text_height, text_width
@@ -430,14 +430,14 @@ class TextImageOverLay:
         if text_color is not None:
             text_color_list = re.split('[,;]+', text_color)
 
-        print("!!!!!!!!!! text_list", text_list)
-        print("!!!!!!!!!! x_offset_list", x_offset_list)        
-        print("!!!!!!!!!! y_offset_list", y_offset_list)
-        print("!!!!!!!!!! text_width_list", text_width_list)
-        print("!!!!!!!!!! text_height_list", text_height_list)
-        print("!!!!!!!!!! font_size_list", font_size_list)
-        print("!!!!!!!!!! text_color_list", text_color_list)
-        print("!!!!!!!!!! align_list", align_list)
+        print("text_list:", text_list)
+        print("x_offset_list:", x_offset_list)        
+        print("y_offset_list:", y_offset_list)
+        print("text_width_list:", text_width_list)
+        print("text_height_list:", text_height_list)
+        print("font_size_list:", font_size_list)
+        print("text_color_list:", text_color_list)
+        print("align_list:", align_list)
 
         if len(text_list) != len(x_offset_list) or len(text_list) != len(y_offset_list):
             raise ValueError("The number of text, x_offsets, and y_offsets must be the same.")
@@ -495,7 +495,7 @@ class TextImageOverLay:
                 font_size_str = '30'
             
             
-            print('!!!!!!!!! font_size_str is', font_size_str)
+            print('font_size_str is', font_size_str)
             if len(align_list)>i:
                 align = align_list[i]
                 align = align.strip().lower() if align else 'center'  # Default to center if align is not provided
@@ -504,7 +504,7 @@ class TextImageOverLay:
             else:
                 align = 'left'  # Default to left if align is not provided
             
-            for i, paragraph in enumerate(paragraphs):
+            for paragraph_index, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
                 if not paragraph:
                     continue
@@ -518,7 +518,7 @@ class TextImageOverLay:
                     font_computed_size = font_computed_size - 1
                     print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
                     font_size = font_computed_size
-                print('!!!!!!!!!! final font_size is', font_size)
+                print('final font_size is', font_size)
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_size))
                 draw = ImageDraw.Draw(image)
                 # 计算文本框的宽度和高度
@@ -526,46 +526,55 @@ class TextImageOverLay:
                 if text_height_single_paragraph == 0:
                     text_height_single_paragraph = bbox[3] - bbox[1]
                 print(f"Bounding box for paragraph '{paragraph}': {bbox}")
+                print(f"Text width for paragraph '{paragraph}': {text_width} and text height: {text_height_single_paragraph}")
                 ### 判断是否需要自动换行
                 lines = []
                 if bbox[2]-bbox[0] > text_width:
                     # 计算文本的行数
                     line = ""
-                    if is_chinese_char(paragraph[0]):
+                    if is_chinese_char(paragraph[0]) or is_chinese_char(paragraph[-1]):
+                        # 如果是中文字符，按字分割
                         words = list(paragraph)
+                        print('##chinese words:', words)
                     else:
                         words = paragraph.split()
+                        print('##other languge words:', words)
                     
                     for word in words:
-                        test_line = line + word + ' '
+                        test_line = line + word
+                        if not is_chinese_char(paragraph[0]) and not is_chinese_char(paragraph[-1]):
+                            test_line += ' '
                         bbox_current=font.getbbox(test_line)
                         w = bbox_current[2] - bbox_current[0]
                         if w <= text_width:
                             line = test_line
                         else:
                             lines.append(line.strip())
-                            line = word + ' '
+                            line = word
+                            if not is_chinese_char(paragraph[0]) and not is_chinese_char(paragraph[-1]):
+                                line += ' '
                     if line:
                         lines.append(line.strip())
                 else:
                     lines.append(paragraph)
-                
+                print('## lines after wrapping:', lines)
                 for line in lines:
-                    bbox = font.getbbox(line)
+                    print(f"Processing line: {line}")
+                    bbox_line = font.getbbox(line)
                     # 根据 align 参数重新计算 x 坐标
                     if align == "left":
                         x_text = x_offset
                     elif align == "center":
-                        x_text = int(x_offset + (text_width / 2) - (bbox[2]-bbox[0])/2)
+                        x_text = int(x_offset + (text_width / 2) - (bbox_line[2]-bbox_line[0])/2)
                     elif align == "right":
-                        x_text = int(x_offset + text_width - (bbox[2]-bbox[0]))
+                        x_text = int(x_offset + text_width - (bbox_line[2]-bbox_line[0]))
                     else:
-                        x_text = int(x_offset + (text_width / 2) - (bbox[2]-bbox[0])/2)  # 默认为center对齐
+                        x_text = int(x_offset + (text_width / 2) - (bbox_line[2]-bbox_line[0])/2)  # 默认为center对齐
                     
                     ascent, descent = font.getmetrics()
                     print(f"Ascent: {ascent}, Descent: {descent} for font size {font_size}")
                     # 文字顶部坐标 = 基线坐标 - ascent
-                    top_y = y_offset - np.ceil(ascent*0.1)
+                    top_y = y_offset - np.ceil(ascent*0.05)
 
                     if bold:
                         font = font.bold()
@@ -578,16 +587,15 @@ class TextImageOverLay:
 
                     draw.text(
                         xy=(x_text, top_y),
-                        text=paragraph,
+                        text=line,
                         fill=text_color_str,
                         font=font,
                         stroke_width=stroke_width,
                         stroke_fill=stroke_color,
                         )
-                    y_offset += text_height_single_paragraph
+                    y_offset += (bbox_line[3] - bbox_line[1])*1.1  # Move y_offset down for the next line
         
         result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
-        #print("!!!!!!!!!! result_img shape", result_img.shape)
         return result_img
 
 class SaveText:
