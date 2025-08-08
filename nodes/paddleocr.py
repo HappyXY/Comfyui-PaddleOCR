@@ -39,7 +39,7 @@ class ImageOCRByPaddleOCR:
                   }
                 }
     
-    RETURN_TYPES = ("STRING","STRING","STRING","STRING","STRING","STRING", "STRING", "STRING", "IMAGE","IMAGE")
+    RETURN_TYPES = ("STRING","STRING","STRING","STRING","STRING","INT", "INT", "STRING", "IMAGE","IMAGE")
     RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights","img_width","img_height", "ocr_results_json", "Mask Image","Result Image")
     FUNCTION = "forward"
     CATEGORY = "paddleocr"
@@ -104,7 +104,7 @@ class ImageOCRByPaddleOCR:
         #print(ocr_results.keys())
         # Create a mask image with the same size as the original image
         result = []
-        masked_img = numpy_image.copy()
+        masked_img = np.array(Image.new("RGB", (numpy_image.shape[1], numpy_image.shape[0]), (0, 0, 0)))
         result_img = numpy_image.copy()
         all_text=""
         x_offsets=[]
@@ -134,7 +134,7 @@ class ImageOCRByPaddleOCR:
              x1, y1 = int(x_offset), int(y_offset)
              x2, y2 = int(x_offset + width), int(y_offset + height)
              # Draw a black rectangle on the mask image
-             cv2.rectangle(masked_img, (x1, y1), (x2, y2), (0, 0, 0), -1)
+             cv2.rectangle(masked_img, (x1, y1), (x2, y2), (255, 255, 255), -1)
              cv2.rectangle(result_img, (x1, y1), (x2, y2), (255, 0, 0), 0)
 
 
@@ -538,7 +538,8 @@ class TextImageOverLay:
                     
                     for word in words:
                         test_line = line + word + ' '
-                        w, _ = draw.textsize(test_line, font=font)
+                        bbox_current=font.getbbox(test_line)
+                        w = bbox_current[2] - bbox_current[0]
                         if w <= text_width:
                             line = test_line
                         else:
