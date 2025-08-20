@@ -208,8 +208,8 @@ class OcrResultPostprocess:
                 }
                 }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "image", "mask_img")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "leading_list", "image", "mask_img")
     FUNCTION = "OcrResultPostprocess"
 
     CATEGORY = "postprocessingTool"
@@ -242,6 +242,7 @@ class OcrResultPostprocess:
 
         all_boxes = []
         alignment_methods = []
+        leading_list = []
         # Extract text and bounding box information
         mask_img = np.array(Image.new("RGB", (image.shape[1], image.shape[0]), (0, 0, 0)))
         
@@ -251,7 +252,9 @@ class OcrResultPostprocess:
              print("ocr_result_re is ", ocr_result_re)
              bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
              alignment_method = ocr_result_re.get('alignment', 'center')
+             leading = ocr_result_re.get('leading', 8)
              alignment_methods.append(alignment_method)
+             leading_list.append(str(leading))
              all_boxes.append(bbox)
              x1, y1, x2, y2 = bbox
              x_offsets.append(str(x1))
@@ -289,12 +292,13 @@ class OcrResultPostprocess:
         heights=";".join(heights)
         text_colors=";".join(text_colors)
         alignment_methods=";".join(alignment_methods)
+        leading_list=";".join(leading_list)
         font_sizes=";".join(font_sizes)
         image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
         mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
         print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, image, mask_img
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, image, mask_img
 
 def is_chinese_char(ch):
     """判断一个字符是否是中文"""
@@ -328,7 +332,7 @@ class TextImageOverLay:
                 "stroke_width": ("INT",{"default": 0, "min": 0, "max": 8096, "step": 1},),
                 "stroke_color": ("STRING",{"default": "#FF8000"},),
                 "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
-                "leading": ("INT",{"default": 8, "min": 0, "max": 8096, "step": 1},),
+                "leading": ("STRING", {"multiline": True},),
             },
         }
 
@@ -359,15 +363,14 @@ class TextImageOverLay:
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             
-            if text_width > 0 and text_height >0:
-                if text_width > box_width or text_height > box_height:
-                    return font_size - 1  # last acceptable size
-            elif text_width > 0:
-                if text_width > box_width:
-                    return font_size - 1  # last acceptable size
-            elif text_height > 0:
+            if box_height >0:
                 if text_height > box_height:
                     return font_size - 1  # last acceptable size
+            elif box_width > 0:
+                if text_width > box_width:
+                    return font_size - 1  # last acceptable size
+            else:
+                raise ValueError("Be sure one of box_width and box_height larger than zero.")
 
         return max_size  # text fits even at max_size
 
@@ -378,6 +381,8 @@ class TextImageOverLay:
                           ):
 
         image = background_image[0] * 255.0
+        if not text or text.strip() == "":
+            return background_image
         image = Image.fromarray(image.clamp(0, 255).numpy().round().astype(np.uint8))
         current_directory = os.path.dirname(os.path.abspath(__file__))
         font_resource_dir = os.path.join(current_directory, "font_dir")
@@ -391,10 +396,7 @@ class TextImageOverLay:
         if not font_path:
             font_path = os.path.join(font_resource_dir, '华文楷体.ttf')
             print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
-        
-        # Check if text is provided
-        if not text or text.strip() == "":
-            raise ValueError("Text cannot be empty.")
+
         
         # Check if x_offset and y_offset are provided
         if not x_offset or not y_offset:
@@ -403,6 +405,7 @@ class TextImageOverLay:
         text_list = re.split('[,;]+', text)
         x_offset_list = re.split('[,;]+', x_offset)
         y_offset_list = re.split('[,;]+', y_offset)
+        leading_list = re.split('[,;]+', leading) if leading else []
         text_width_list = []
         text_height_list = []
         font_size_list = []
@@ -438,6 +441,7 @@ class TextImageOverLay:
         print("font_size_list:", font_size_list)
         print("text_color_list:", text_color_list)
         print("align_list:", align_list)
+        print("leading_list:", leading_list)
 
         if len(text_list) != len(x_offset_list) or len(text_list) != len(y_offset_list):
             raise ValueError("The number of text, x_offsets, and y_offsets must be the same.")
@@ -455,10 +459,14 @@ class TextImageOverLay:
             x_offset = int(x_offset_str.strip()) if x_offset_str.strip() else 0
             y_offset = int(y_offset_str.strip()) if y_offset_str.strip() else 0
             
-            #粗体
-            bold = False
-            #斜体
-            italic = False
+            if len(leading_list) > i:
+                leading_value = leading_list[i].strip()
+                if leading_value.isdigit():
+                    leading_value = int(leading_value)
+                else:
+                    leading_value = 0
+            else:
+                leading_value = 0  # Default to 0 if not provided
 
             if len(text_color_list) > i:
                 text_color_str = text_color_list[i].strip()
@@ -574,16 +582,7 @@ class TextImageOverLay:
                     ascent, descent = font.getmetrics()
                     print(f"Ascent: {ascent}, Descent: {descent} for font size {font_size}")
                     # 文字顶部坐标 = 基线坐标 - ascent
-                    top_y = y_offset - np.ceil(ascent*0.05)
-
-                    if bold:
-                        font = font.bold()
-                    
-                    if italic:
-                        font = font.italic()
-                    
-                    if bold and italic:
-                        font = font.bold().italic()
+                    top_y = y_offset - np.ceil(ascent*0.02)
 
                     draw.text(
                         xy=(x_text, top_y),
@@ -593,7 +592,7 @@ class TextImageOverLay:
                         stroke_width=stroke_width,
                         stroke_fill=stroke_color,
                         )
-                    y_offset += (bbox_line[3] - bbox_line[1])*1.1  # Move y_offset down for the next line
+                    y_offset += (bbox_line[3] - bbox_line[1]) + leading_value  # Move y_offset down for the next line
         
         result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
         return result_img
