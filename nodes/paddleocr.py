@@ -397,7 +397,8 @@ class TextImageOverLay:
             font_path = os.path.join(font_resource_dir, '华文楷体.ttf')
             print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
 
-        
+        automatic_line_break = False
+
         # Check if x_offset and y_offset are provided
         if not x_offset or not y_offset:
             raise ValueError("x_offset and y_offset must be provided.")
@@ -482,6 +483,12 @@ class TextImageOverLay:
             text_height_single_paragraph = 0
             align = 'center'
             font_size_str = None
+
+            if len(text_height_list) > i:
+                text_height_str = text_height_list[i]
+                text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
+                text_height_single_paragraph = np.ceil(text_height * 0.93 / len(paragraphs))
+
             if len(font_size_list)> i and font_size_list[i].strip() != "":
                 font_size_str = font_size_list[i]
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, int(font_size_str)))
@@ -492,11 +499,6 @@ class TextImageOverLay:
             if len(text_width_list) > i:
                 text_width_str = text_width_list[i]
                 text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
-            
-            if len(text_height_list) > i:
-                text_height_str = text_height_list[i]
-                text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
-                text_height_single_paragraph = text_height / len(paragraphs)
             
             if len(font_size_list) <= i and len(text_height_list) <= i and len(text_width_list) <= i:
                 print('Not provide sufficient information for font size, and set font_size to 30')
@@ -537,7 +539,7 @@ class TextImageOverLay:
                 print(f"Text width for paragraph '{paragraph}': {text_width} and text height: {text_height_single_paragraph}")
                 ### 判断是否需要自动换行
                 lines = []
-                if bbox[2]-bbox[0] > text_width:
+                if bbox[2]-bbox[0] > text_width and automatic_line_break:
                     # 计算文本的行数
                     line = ""
                     if is_chinese_char(paragraph[0]) or is_chinese_char(paragraph[-1]):
