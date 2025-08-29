@@ -300,7 +300,7 @@ class OcrResultPostprocess:
         mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
         print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, str(result_json), image, mask_img
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, json.dumps(result_json, ensure_ascii=False, indent=2), image, mask_img
 
 def is_chinese_char(ch):
     """判断一个字符是否是中文"""
@@ -402,7 +402,7 @@ class TextImageOverLay:
             font_path = os.path.join(font_resource_dir, '华文楷体.ttf')
             print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
 
-        automatic_line_break = False
+        automatic_line_break = True
         
 
         # Check if x_offset and y_offset are provided
@@ -417,7 +417,7 @@ class TextImageOverLay:
         text_height_list = []
         font_size_list = []
         align_list = []
-
+        print('!!!!!!!!!!!!', ocrRes)
         if ocrRes and ocrRes.strip() != "":
             text_info_json = json.loads(ocrRes) 
         else:
@@ -500,6 +500,9 @@ class TextImageOverLay:
             align = 'center'
             font_size_str = None
 
+            if len(paragraphs) > 1:
+                automatic_line_break = False
+
             if len(text_height_list) > i:
                 text_height_str = text_height_list[i]
                 text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
@@ -539,7 +542,7 @@ class TextImageOverLay:
                 font_size = font_computed_size
             print('final font_size is', font_size)
 
-            text_info_json['text_information'][i]['font_size'] = font_size
+            text_info_json["text_information"][i]["font_size"] = font_size
 
             for paragraph_index, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
@@ -613,7 +616,8 @@ class TextImageOverLay:
                         )
                     y_offset += (bbox_line[3] - bbox_line[1]) + leading_value  # Move y_offset down for the next line
         
-        result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
+        result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+        print("result image shape is", result_img.shape)
         return result_img, json.dumps(text_info_json, ensure_ascii=False)
 
 class SaveText:
