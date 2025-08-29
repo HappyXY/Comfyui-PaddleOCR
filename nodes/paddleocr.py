@@ -208,8 +208,8 @@ class OcrResultPostprocess:
                 }
                 }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "leading_list", "image", "mask_img")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "leading_list", "result_json", "image", "mask_img")
     FUNCTION = "OcrResultPostprocess"
 
     CATEGORY = "postprocessingTool"
@@ -225,6 +225,8 @@ class OcrResultPostprocess:
         print(ocrRes[json_start:json_end])
         if json_start >= 0 and json_end > json_start:
             result_json = json.loads(ocrRes[json_start:json_end])
+        else:
+            raise ValueError("Invalid JSON string")
         result_list = result_json['text_information']
         
         result = []
@@ -298,7 +300,7 @@ class OcrResultPostprocess:
         mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
         print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, image, mask_img
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, str(result_json), image, mask_img
 
 def is_chinese_char(ch):
     """判断一个字符是否是中文"""
@@ -334,10 +336,13 @@ class TextImageOverLay:
                 "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
                 "leading": ("STRING", {"multiline": True},),
             },
+            "optional": {
+                "ocrRes": ("STRING", {"default":"","multiline": True}),
+            },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
+    RETURN_TYPES = ("IMAGE","STRING")
+    RETURN_NAMES = ("image", "text_information_json")
     FUNCTION = 'text_image_overlay'
     CATEGORY = 'postprocessingTool'
 
@@ -377,7 +382,7 @@ class TextImageOverLay:
     def text_image_overlay(self, background_image, text, font_file, align, char_per_line,
                           leading, font_size, text_color,
                           stroke_width, stroke_color, x_offset, y_offset,
-                          text_width, text_height
+                          text_width, text_height, ocrRes
                           ):
 
         image = background_image[0] * 255.0
@@ -398,6 +403,7 @@ class TextImageOverLay:
             print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
 
         automatic_line_break = False
+        
 
         # Check if x_offset and y_offset are provided
         if not x_offset or not y_offset:
@@ -411,6 +417,16 @@ class TextImageOverLay:
         text_height_list = []
         font_size_list = []
         align_list = []
+
+        if ocrRes and ocrRes.strip() != "":
+            text_info_json = json.loads(ocrRes) 
+        else:
+            text_info_json = {}
+            #set the list length the same as text_list
+            text_info_json["text_information"] = [{
+                "text": text_list[i],
+            } for i in range(len(text_list))]
+
         if text_width is not None and text_width.strip() != "":
             print('text_width is ', text_width) 
             text_width_list = re.split('[, ;]+', text_width)
@@ -513,22 +529,23 @@ class TextImageOverLay:
                 align = 'center'  # Default to center if align is not provided
             else:
                 align = 'left'  # Default to left if align is not provided
-            
+
+            if font_size_str is not None:
+                font_size = int(font_size_str.strip()) if font_size_str.strip() else 0
+            else:
+                font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width, text_height_single_paragraph, max_size=2500)
+                font_computed_size = font_computed_size - 1
+                print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
+                font_size = font_computed_size
+            print('final font_size is', font_size)
+
+            text_info_json['text_information'][i]['font_size'] = font_size
+
             for paragraph_index, paragraph in enumerate(paragraphs):
                 paragraph = paragraph.strip()
                 if not paragraph:
                     continue
-                #computer text width and height for each paragraph
-                #text_width_i = text_width
-                #text_height_i = text_height_single_paragraph
-                if font_size_str is not None:
-                    font_size = int(font_size_str.strip()) if font_size_str.strip() else 0
-                else:
-                    font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width, text_height_single_paragraph, max_size=2500)
-                    font_computed_size = font_computed_size - 1
-                    print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
-                    font_size = font_computed_size
-                print('final font_size is', font_size)
+
                 font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_size))
                 draw = ImageDraw.Draw(image)
                 # 计算文本框的宽度和高度
@@ -597,7 +614,7 @@ class TextImageOverLay:
                     y_offset += (bbox_line[3] - bbox_line[1]) + leading_value  # Move y_offset down for the next line
         
         result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
-        return result_img
+        return result_img, json.dumps(text_info_json, ensure_ascii=False)
 
 class SaveText:
     @classmethod
