@@ -208,8 +208,8 @@ class OcrResultPostprocess:
                 }
                 }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "leading_list", "result_json", "image", "mask_img")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "leading_list", "bold_list", "result_json", "image", "mask_img")
     FUNCTION = "OcrResultPostprocess"
 
     CATEGORY = "postprocessingTool"
@@ -236,6 +236,7 @@ class OcrResultPostprocess:
         heights=[]
         text_colors=[]
         font_sizes=[]
+        bold_list=[]
         font_file = result_json.get('font_file', '华文楷体.ttf')
         # font_file is empty string, set default font file
         if not font_file:
@@ -274,6 +275,9 @@ class OcrResultPostprocess:
 
              font_size = ocr_result_re.get('font_size', "")
              font_sizes.append(str(font_size))
+
+             bold_list.append(str(ocr_result_re.get('bold', 'false')))
+
              #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
              overlay = image.copy()
              alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
@@ -296,11 +300,12 @@ class OcrResultPostprocess:
         alignment_methods=";".join(alignment_methods)
         leading_list=";".join(leading_list)
         font_sizes=";".join(font_sizes)
+        bold_list=";".join(bold_list)
         image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
         mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
         print("mask image shape is", mask_img.shape)
         print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, json.dumps(result_json, ensure_ascii=False, indent=2), image, mask_img
+        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, bold_list, json.dumps(result_json, ensure_ascii=False, indent=2), image, mask_img
 
 def is_chinese_char(ch):
     """判断一个字符是否是中文"""
@@ -335,6 +340,7 @@ class TextImageOverLay:
                 "stroke_color": ("STRING",{"default": "#FF8000"},),
                 "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
                 "leading": ("STRING", {"multiline": True},),
+                "bold": ("STRING", {"multiline": True},),
             },
             "optional": {
                 "ocrRes": ("STRING", {"default":"","multiline": True}),
@@ -382,7 +388,7 @@ class TextImageOverLay:
     def text_image_overlay(self, background_image, text, font_file, align, char_per_line,
                           leading, font_size, text_color,
                           stroke_width, stroke_color, x_offset, y_offset,
-                          text_width, text_height, ocrRes
+                          text_width, text_height, bold, ocrRes
                           ):
 
         image = background_image[0] * 255.0
@@ -399,7 +405,7 @@ class TextImageOverLay:
         font_path = FONT_DICT.get(font_file)
         # Check if the font path exists and set to default if not provided
         if not font_path:
-            font_path = os.path.join(font_resource_dir, '华文楷体.ttf')
+            font_path = os.path.join(font_resource_dir, 'NotoSans.ttf')
             print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
 
         automatic_line_break = True
@@ -413,6 +419,7 @@ class TextImageOverLay:
         x_offset_list = re.split('[,;]+', x_offset)
         y_offset_list = re.split('[,;]+', y_offset)
         leading_list = re.split('[,;]+', leading) if leading else []
+        bold_list = re.split('[,;]+', bold) if bold else []
         text_width_list = []
         text_height_list = []
         font_size_list = []
@@ -484,6 +491,24 @@ class TextImageOverLay:
                     leading_value = 0
             else:
                 leading_value = 0  # Default to 0 if not provided
+            
+            if len(bold_list) > i:
+                bold_value = bold_list[i].strip().lower()
+                if bold_value == 'true':
+                    bold_value = True
+                    if not font_path:
+                        font_path = os.path.join(font_resource_dir, 'NotoSans-Bold.ttf')
+                    else:
+                        font_path = font_path.replace('.ttf', '-Bold.ttf')
+                else:
+                    bold_value = False
+            else:
+                bold_value = False  # Default to False if not provided
+            
+            if not bold_value:
+                font_path = FONT_DICT.get(font_file)
+                if not font_path:
+                    font_path = os.path.join(font_resource_dir, 'NotoSans.ttf')
 
             if len(text_color_list) > i:
                 text_color_str = text_color_list[i].strip()
