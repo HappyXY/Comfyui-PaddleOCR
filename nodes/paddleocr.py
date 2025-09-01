@@ -536,9 +536,9 @@ class TextImageOverLay:
             if font_size_str is not None:
                 font_size = int(font_size_str.strip()) if font_size_str.strip() else 0
             else:
-                font_computed_size = TextImageOverLay.get_max_fontsize(paragraph, font_path, text_width, text_height_single_paragraph, max_size=2500)
+                font_computed_size = TextImageOverLay.get_max_fontsize(paragraphs[0], font_path, text_width, text_height_single_paragraph, max_size=2500)
                 font_computed_size = font_computed_size - 1
-                print(f"Computed font size for paragraph '{paragraph}': {font_computed_size}")
+                print(f"Computed font size for paragraph '{paragraphs[0]}': {font_computed_size}")
                 font_size = font_computed_size
             print('final font_size is', font_size)
 
