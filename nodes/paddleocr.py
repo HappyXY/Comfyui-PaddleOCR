@@ -441,7 +441,7 @@ class TextImageOverLay:
         
         #must provide one between the font_size, text_height, text_width
         if len(font_size_list) == 0 and len(text_height_list) == 0 and len(text_width_list) == 0:
-            raise ValueError("Must provide one between the font_size, text_height, text_width")
+            print("Did not provide information about the font_size,text_height and text_width")
 
         if align is not None:
             align_list = re.split('[, ;]+', align)
