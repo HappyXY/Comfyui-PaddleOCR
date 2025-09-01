@@ -237,10 +237,10 @@ class OcrResultPostprocess:
         text_colors=[]
         font_sizes=[]
         bold_list=[]
-        font_file = result_json.get('font_file', '华文楷体.ttf')
+        font_file = result_json.get('font_file', 'NotaSans.ttf')
         # font_file is empty string, set default font file
         if not font_file:
-            font_file = '华文楷体.ttf'
+            font_file = 'NotaSans.ttf'
         print("font_file is", font_file)
 
         all_boxes = []
