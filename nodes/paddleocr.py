@@ -168,145 +168,6 @@ class ImageOCRByPaddleOCR:
     def forward(self, image):
         return self.ocr_by_paddleocr(image)
 
-
-class BBOXTOMASK:
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": 
-                {
-                    "bboxs": ("LIST", ),
-                    "width": ("INT", ),
-                    "height": ("INT", )
-                }
-                }
-
-    RETURN_TYPES = ("MASK",)
-    RETURN_NAMES = ("MASK",)
-    FUNCTION = "bbox2mask"
-
-    CATEGORY = "preprocessingTool"
-
-    def bbox2mask(self, bboxs, width, height):
-        masked_img = Image.new("L", (width, height), 0)
-        for bbox in bboxs:
-            x1, y1, x2, y2 = bbox
-            # Draw a white rectangle on the mask image
-            masked_img.paste(255, (x1, y1, x2, y2)) 
-        masked_img = torch.from_numpy(np.array(masked_img).astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
-        #print('!!!!!!!! mask shape', masked_img.shape)
-        return masked_img
-
-class OcrResultPostprocess:
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": 
-                {
-                    "image": ("IMAGE", ),
-                    "ocrRes": ("STRING", {"multiline": True}),
-                }
-                }
-
-    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "LIST", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("Texts","x_offsets","y_offsets","widths","heights", "bboxes", "text_colors", "font_sizes", "font_file", "alignment_methods", "leading_list", "bold_list", "result_json", "image", "mask_img")
-    FUNCTION = "OcrResultPostprocess"
-
-    CATEGORY = "postprocessingTool"
-
-    def OcrResultPostprocess(self, image, ocrRes):
-
-        image = image[0] * 255.0
-        image = image.clamp(0, 255).numpy().round().astype(np.uint8)
-        print("image shape is", image.shape)
-
-        json_start = ocrRes.find('{')
-        json_end = ocrRes.rfind('}') + 1
-        print(ocrRes[json_start:json_end])
-        if json_start >= 0 and json_end > json_start:
-            result_json = json.loads(ocrRes[json_start:json_end])
-        else:
-            raise ValueError("Invalid JSON string")
-        result_list = result_json['text_information']
-        
-        result = []
-        x_offsets=[]
-        y_offsets=[]
-        widths=[]
-        heights=[]
-        text_colors=[]
-        font_sizes=[]
-        bold_list=[]
-        font_file = result_json.get('font_file', 'NotaSans.ttf')
-        # font_file is empty string, set default font file
-        if not font_file:
-            font_file = 'NotaSans.ttf'
-        print("font_file is", font_file)
-
-        all_boxes = []
-        alignment_methods = []
-        leading_list = []
-        # Extract text and bounding box information
-        mask_img = np.array(Image.new("RGB", (image.shape[1], image.shape[0]), (0, 0, 0)))
-        
-        #for line in ocr_results:
-        for index in range(len(result_list)):
-             ocr_result_re = result_list[index]
-             print("ocr_result_re is ", ocr_result_re)
-             bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
-             alignment_method = ocr_result_re.get('alignment', 'center')
-             leading = ocr_result_re.get('leading', 8)
-             alignment_methods.append(alignment_method)
-             leading_list.append(str(leading))
-             all_boxes.append(bbox)
-             x1, y1, x2, y2 = bbox
-             x_offsets.append(str(x1))
-             y_offsets.append(str(y1))
-             widths.append(str(x2-x1))
-             heights.append(str(y2-y1))
-
-             #text = line[1][0]
-             text = ocr_result_re.get('text', "")
-             print("text",text)
-             result.append(text)
-
-             text_color = ocr_result_re.get('text_color', '#FFFFFF')
-             text_colors.append(text_color)
-
-             font_size = ocr_result_re.get('font_size', "")
-             font_sizes.append(str(font_size))
-
-             bold_list.append(str(ocr_result_re.get('bold', 'false')))
-
-             #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
-             overlay = image.copy()
-             alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
-
-             # 在 overlay 上画实心矩形（厚度 = -1 表示填充）
-             cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 0, 0), thickness=-1)
-
-             # 将 overlay 合成到原图（在框区域做加权）
-             cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
-    
-             # add red box to the original image
-             cv2.rectangle(mask_img, (x1, y1), (x2, y2), (255, 255, 255), -1)
-        
-        all_text=";".join(result)
-        x_offsets=";".join(x_offsets)
-        y_offsets=";".join(y_offsets)
-        widths=";".join(widths)
-        heights=";".join(heights)
-        text_colors=";".join(text_colors)
-        alignment_methods=";".join(alignment_methods)
-        leading_list=";".join(leading_list)
-        font_sizes=";".join(font_sizes)
-        bold_list=";".join(bold_list)
-        image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
-        mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
-        print("mask image shape is", mask_img.shape)
-        print("result image shape is", image.shape)
-        return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, bold_list, json.dumps(result_json, ensure_ascii=False, indent=2), image, mask_img
-
 class TextInformationMask:
 
     @classmethod
@@ -382,37 +243,50 @@ def is_chinese_char(ch):
         0x2B820 <= code_point <= 0x2CEAF or
         0x3000 <= code_point <= 0x303F
     )
-
-class TextImageOverLay:
+def wrap_text(text, font, max_width):
+    """文本自动换行"""
+    bbox = font.getbbox(text)
+    if bbox[2] - bbox[0] <= max_width:
+        return [text]
+    
+    lines = []
+    if is_chinese_char(text[0]):
+        words = list(text)
+    else:
+        words = text.split()
+    
+    line = ""
+    for word in words:
+        test_line = line + word
+        if not is_chinese_char(text[0]):
+            test_line += ' '
+        
+        bbox_test = font.getbbox(test_line)
+        if bbox_test[2] - bbox_test[0] <= max_width:
+            line = test_line
+        else:
+            if line:
+                lines.append(line.strip())
+            line = word + (' ' if not is_chinese_char(text[0]) else '')
+    
+    if line:
+        lines.append(line.strip())
+    
+    return lines
+class TextOverLay:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "background_image": ("IMAGE",),
-                "text": ("STRING",{"default": "text", "multiline": True},),
-                "font_file": ("STRING",{"default": "华文楷体.ttf"},),
-                "align": ("STRING", {"multiline": True},),
-                "font_size": ("STRING", {"default":"", "multiline": True},),
-                "text_color": ("STRING", {"multiline": True},),
-                "x_offset": ("STRING", {"multiline": True},),
-                "y_offset": ("STRING", {"multiline": True},),
-                "text_width": ("STRING", {"default":"", "multiline": True},),
-                "text_height": ("STRING", {"default":"", "multiline": True},),
-                "stroke_width": ("INT",{"default": 0, "min": 0, "max": 8096, "step": 1},),
-                "stroke_color": ("STRING",{"default": "#FF8000"},),
-                "char_per_line": ("INT", {"default": 80, "min": 1, "max": 8096, "step": 1},),
-                "leading": ("STRING", {"multiline": True},),
-                "bold": ("STRING", {"multiline": True},),
-            },
-            "optional": {
-                "ocrRes": ("STRING", {"default":"","multiline": True}),
-            },
+        return {"required": 
+                {
+                    "backgroud_image": ("IMAGE", ),
+                    "text_information": ("STRING", {"multiline": True}),
+                }
         }
 
     RETURN_TYPES = ("IMAGE","STRING")
     RETURN_NAMES = ("image", "text_information_json")
-    FUNCTION = 'text_image_overlay'
+    FUNCTION = 'text_overlay'
     CATEGORY = 'postprocessingTool'
 
     @staticmethod
@@ -448,265 +322,119 @@ class TextImageOverLay:
 
         return max_size  # text fits even at max_size
 
-    def text_image_overlay(self, background_image, text, font_file, align, char_per_line,
-                          leading, font_size, text_color,
-                          stroke_width, stroke_color, x_offset, y_offset,
-                          text_width, text_height, bold, ocrRes
-                          ):
+    def text_overlay(self, backgroud_image, text_information):
 
-        image = background_image[0] * 255.0
-        if not text or text.strip() == "":
-            return background_image
+        image = backgroud_image[0] * 255.0
+        json_start = text_information.find('{')
+        json_end = text_information.rfind('}') + 1
+        if json_start >= 0 and json_end > json_start:
+            text_information = json.loads(text_information[json_start:json_end])
+        else:
+            raise ValueError("Invalid JSON string")
+    
+        text_list = text_information.get('text_information', [])
+        if text_list is None or len(text_list) == 0:
+            return backgroud_image, json.dumps(text_information, ensure_ascii=False)
         image = Image.fromarray(image.clamp(0, 255).numpy().round().astype(np.uint8))
         current_directory = os.path.dirname(os.path.abspath(__file__))
         font_resource_dir = os.path.join(current_directory, "font_dir")
         print("font_resource_dir is", font_resource_dir)
         FONT_DICT = {}
-        FONT_DICT.update(TextImageOverLay.collect_font_files(font_resource_dir, ('.ttf', '.otf'))) # 后缀要小写
-        width, height = image.size
+        FONT_DICT.update(TextOverLay.collect_font_files(font_resource_dir, ('.ttf', '.otf'))) # 后缀要小写
         print('All aviable font files is: ', FONT_DICT)
-        font_path = FONT_DICT.get(font_file)
+        font_file = text_information.get('font_file', 'NotoSansSC.ttf')
+        regular_font_path = FONT_DICT.get(font_file)
         # Check if the font path exists and set to default if not provided
-        if not font_path:
-            font_path = os.path.join(font_resource_dir, 'NotoSans.ttf')
-            print(f"Font file '{font_file}' not found in the font directory. Using default font: {font_path}")
+        if not regular_font_path:
+            regular_font_path = os.path.join(font_resource_dir, 'NotoSansSC.ttf')
+            print(f"Font file '{font_file}' not found in the font directory. Using default font: {regular_font_path}")
 
-        automatic_line_break = True
+        draw = ImageDraw.Draw(image)
+
+        line_break = True
         
-
-        # Check if x_offset and y_offset are provided
-        if not x_offset or not y_offset:
-            raise ValueError("x_offset and y_offset must be provided.")
-
-        text_list = re.split('[,;]+', text)
-        x_offset_list = re.split('[,;]+', x_offset)
-        y_offset_list = re.split('[,;]+', y_offset)
-        leading_list = re.split('[,;]+', leading) if leading else []
-        bold_list = re.split('[,;]+', bold) if bold else []
-        text_width_list = []
-        text_height_list = []
-        font_size_list = []
-        align_list = []
-        print('!!!!!!!!!!!!', ocrRes)
-        if ocrRes and ocrRes.strip() != "":
-            text_info_json = json.loads(ocrRes) 
-        else:
-            text_info_json = {}
-            #set the list length the same as text_list
-            text_info_json["text_information"] = [{
-                "text": text_list[i],
-            } for i in range(len(text_list))]
-
-        if text_width is not None and text_width.strip() != "":
-            print('text_width is ', text_width) 
-            text_width_list = re.split('[, ;]+', text_width)
-        
-        if text_height is not None and text_height.strip() != "":
-            print('text_height is ', text_height)
-            text_height_list = re.split('[, ;]+', text_height)
-            
-        if font_size is not None and font_size.strip() != "":
-            print('font_size is ', font_size)
-            font_size_list = re.split('[, ;]+', font_size)
-        
-        #must provide one between the font_size, text_height, text_width
-        if len(font_size_list) == 0 and len(text_height_list) == 0 and len(text_width_list) == 0:
-            print("Did not provide information about the font_size,text_height and text_width")
-
-        if align is not None:
-            align_list = re.split('[, ;]+', align)
-            
-
-        if text_color is not None:
-            text_color_list = re.split('[,;]+', text_color)
-
-        print("text_list:", text_list)
-        print("x_offset_list:", x_offset_list)        
-        print("y_offset_list:", y_offset_list)
-        print("text_width_list:", text_width_list)
-        print("text_height_list:", text_height_list)
-        print("font_size_list:", font_size_list)
-        print("text_color_list:", text_color_list)
-        print("align_list:", align_list)
-        print("leading_list:", leading_list)
-
-        if len(text_list) != len(x_offset_list) or len(text_list) != len(y_offset_list):
-            raise ValueError("The number of text, x_offsets, and y_offsets must be the same.")
-        
-        if not font_path:
-            raise ValueError(f"Font file '{font_file}' not found in the font directory.")
-        if not os.path.exists(font_path):
-            raise ValueError(f"Font file '{font_file}' does not exist at path: {font_path}")
-        if not text:
-            raise ValueError("Text cannot be empty.")
-        for i, (single_text, x_offset_str, y_offset_str) in enumerate(zip(text_list, x_offset_list, y_offset_list)):
-            if not single_text.strip():
+        item_index = 0
+        for item in text_list:
+            text = item.get('text', '').strip()
+            if not text:
                 continue
-            paragraphs = single_text.split('\n')
-            x_offset = int(x_offset_str.strip()) if x_offset_str.strip() else 0
-            y_offset = int(y_offset_str.strip()) if y_offset_str.strip() else 0
+                
+            bbox = item.get('bbox', [0, 0, 100, 30])
+            x1, y1, x2, y2 = bbox
+            text_width = x2 - x1
+            text_height = y2 - y1
             
-            if len(leading_list) > i:
-                leading_value = leading_list[i].strip()
-                if leading_value.isdigit():
-                    leading_value = int(leading_value)
+            
+            text_color = item.get('text_color', '#FFFFFF')
+            alignment = item.get('alignment', 'center')
+            if text_width <=0:
+                alignment = 'left'
+
+            leading = item.get('leading', 8)
+
+            bold = item.get('bold', "false")
+            if bold == "true":
+                font_path = regular_font_path.replace('.ttf', '-Bold.ttf')
+            else:
+                font_path = regular_font_path
+            
+            
+            paragraphs = text.split('\n')
+            row_number = len(paragraphs)
+
+            if row_number > 1:
+                line_break = False
+
+            font_size = item.get('font_size', 0)
+            if font_size <= 0:
+                if text_width >0 or text_height >0:
+                    font_size = self.get_max_fontsize(text, font_path, text_width, float(text_height)/row_number)
                 else:
-                    leading_value = 0
-            else:
-                leading_value = 0  # Default to 0 if not provided
+                    font_size = 30
+            text_information["text_information"][item_index]["font_size"] = font_size
+            item_index += 1
+
+            font = ImageFont.truetype(font_path, font_size)
+
+            single_row_height = int(text_height/row_number)
             
-            if len(bold_list) > i:
-                bold_value = bold_list[i].strip().lower()
-                if bold_value == 'true':
-                    bold_value = True
-                    if not font_path:
-                        font_path = os.path.join(font_resource_dir, 'NotoSans-Bold.ttf')
-                    else:
-                        font_path = font_path.replace('.ttf', '-Bold.ttf')
-                else:
-                    bold_value = False
-            else:
-                bold_value = False  # Default to False if not provided
-            
-            if not bold_value:
-                font_path = FONT_DICT.get(font_file)
-                if not font_path:
-                    font_path = os.path.join(font_resource_dir, 'NotoSans.ttf')
-
-            if len(text_color_list) > i:
-                text_color_str = text_color_list[i].strip()
-            else:
-                text_color_str = '#FFFFFF'  # Default to white if not provided
-            
-            # Check if the text color is a valid hex color
-            if not re.match(r'^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$', text_color_str):
-                raise ValueError(f"Invalid text color: {text_color_str}. Must be a valid hex color code.")
-
-            text_width = 0
-            text_height = 0
-            text_height_single_paragraph = 0
-            align = 'center'
-            font_size_str = None
-
-            if len(paragraphs) > 1:
-                automatic_line_break = False
-
-            if len(text_height_list) > i:
-                text_height_str = text_height_list[i]
-                text_height = int(text_height_str.strip()) if text_height_str.strip() else 0
-                text_height_single_paragraph = np.ceil(text_height * 0.93 / len(paragraphs))
-
-            if len(font_size_list)> i and font_size_list[i].strip() != "":
-                font_size_str = font_size_list[i]
-                font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, int(font_size_str)))
-                bbox = font.getbbox(paragraphs[0])
-                text_width = int(bbox[2] - bbox[0]) if len(bbox) > 2 else 0
-                text_height_single_paragraph = int(bbox[3] - bbox[1]) if len(bbox) > 3 else 0
-
-            if len(text_width_list) > i:
-                text_width_str = text_width_list[i]
-                text_width = int(text_width_str.strip()) if text_width_str.strip() else 0
-            
-            if len(font_size_list) <= i and len(text_height_list) <= i and len(text_width_list) <= i:
-                print('Not provide sufficient information for font size, and set font_size to 30')
-                font_size_str = '30'
-            
-            
-            print('font_size_str is', font_size_str)
-            if len(align_list)>i:
-                align = align_list[i]
-                align = align.strip().lower() if align else 'center'  # Default to center if align is not provided
-            elif len(text_width_list) > i:
-                align = 'center'  # Default to center if align is not provided
-            else:
-                align = 'left'  # Default to left if align is not provided
-
-            if font_size_str is not None:
-                font_size = int(font_size_str.strip()) if font_size_str.strip() else 0
-            else:
-                font_computed_size = TextImageOverLay.get_max_fontsize(paragraphs[0], font_path, text_width, text_height_single_paragraph, max_size=2500)
-                font_computed_size = font_computed_size - 1
-                print(f"Computed font size for paragraph '{paragraphs[0]}': {font_computed_size}")
-                font_size = font_computed_size
-            print('final font_size is', font_size)
-
-            text_info_json["text_information"][i]["font_size"] = font_size
-
-            for paragraph_index, paragraph in enumerate(paragraphs):
-                paragraph = paragraph.strip()
-                if not paragraph:
+            y_offset = y1
+            print('!!!!!!!!!', paragraphs, y_offset, font_path)
+            for paragraph in paragraphs:
+                if not paragraph.strip():
                     continue
-
-                font = cast(ImageFont.FreeTypeFont, ImageFont.truetype(font_path, font_size))
-                draw = ImageDraw.Draw(image)
-                # 计算文本框的宽度和高度
-                bbox = font.getbbox(paragraph)  # (left, top, right, bottom)
-                if text_height_single_paragraph == 0:
-                    text_height_single_paragraph = bbox[3] - bbox[1]
-                print(f"Bounding box for paragraph '{paragraph}': {bbox}")
-                print(f"Text width for paragraph '{paragraph}': {text_width} and text height: {text_height_single_paragraph}")
-                ### 判断是否需要自动换行
-                lines = []
-                if bbox[2]-bbox[0] > text_width and automatic_line_break:
-                    # 计算文本的行数
-                    line = ""
-                    if is_chinese_char(paragraph[0]) or is_chinese_char(paragraph[-1]):
-                        # 如果是中文字符，按字分割
-                        words = list(paragraph)
-                        print('##chinese words:', words)
-                    else:
-                        words = paragraph.split()
-                        print('##other languge words:', words)
-                    
-                    for word in words:
-                        test_line = line + word
-                        if not is_chinese_char(paragraph[0]) and not is_chinese_char(paragraph[-1]):
-                            test_line += ' '
-                        bbox_current=font.getbbox(test_line)
-                        w = bbox_current[2] - bbox_current[0]
-                        if w <= text_width:
-                            line = test_line
-                        else:
-                            lines.append(line.strip())
-                            line = word
-                            if not is_chinese_char(paragraph[0]) and not is_chinese_char(paragraph[-1]):
-                                line += ' '
-                    if line:
-                        lines.append(line.strip())
+                
+                if line_break:
+                    lines = wrap_text(paragraph, font, text_width)
                 else:
-                    lines.append(paragraph)
-                print('## lines after wrapping:', lines)
+                    lines = [paragraph]
+                
                 for line in lines:
-                    print(f"Processing line: {line}")
                     bbox_line = font.getbbox(line)
-                    # 根据 align 参数重新计算 x 坐标
-                    if align == "left":
-                        x_text = x_offset
-                    elif align == "center":
-                        x_text = int(x_offset + (text_width / 2) - (bbox_line[2]-bbox_line[0])/2)
-                    elif align == "right":
-                        x_text = int(x_offset + text_width - (bbox_line[2]-bbox_line[0]))
-                    else:
-                        x_text = int(x_offset + (text_width / 2) - (bbox_line[2]-bbox_line[0])/2)  # 默认为center对齐
+                    line_width = bbox_line[2] - bbox_line[0]
                     
-                    ascent, descent = font.getmetrics()
-                    print(f"Ascent: {ascent}, Descent: {descent} for font size {font_size}")
-                    # 文字顶部坐标 = 基线坐标 - ascent
-                    top_y = y_offset - np.ceil(ascent*0.02)
-
+                    if alignment == "left":
+                        x_text = x1
+                    elif alignment == "right":
+                        x_text = x2 - line_width
+                    else:  # center
+                        x_text = x1 + (text_width - line_width) // 2
+                    
+                    tw, th = bbox_line[2] - bbox_line[0], bbox_line[3] - bbox_line[1]
+                    y_corrected = y_offset + (single_row_height - th)/2 - bbox_line[1]
+                    
                     draw.text(
-                        xy=(x_text, top_y),
+                        xy=(x_text, y_corrected),
                         text=line,
-                        fill=text_color_str,
-                        font=font,
-                        stroke_width=stroke_width,
-                        stroke_fill=stroke_color,
-                        )
-                    y_offset += (bbox_line[3] - bbox_line[1]) + leading_value  # Move y_offset down for the next line
+                        fill=text_color,
+                        font=font
+                    )
+                    
+                    y_offset += (bbox_line[3] - bbox_line[1]) + leading
         
         result_img = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
         print("result image shape is", result_img.shape)
-        return result_img, json.dumps(text_info_json, ensure_ascii=False)
+        return result_img, json.dumps(text_information, ensure_ascii=False)
 
 class SaveText:
     @classmethod
@@ -747,10 +475,8 @@ class SaveText:
 
 NODE_CLASS_MAPPINGS = {
     "Image OCR by PaddleOCR": ImageOCRByPaddleOCR,
-    "BBOX to Mask": BBOXTOMASK,
-    "OCR Result Postprocess": OcrResultPostprocess,
     "Text Information Mask": TextInformationMask,
-    "Text Image Overlay": TextImageOverLay,
+    "Text Overlay": TextOverLay,
     "Save Text": SaveText
 }
 
