@@ -307,6 +307,69 @@ class OcrResultPostprocess:
         print("result image shape is", image.shape)
         return all_text, x_offsets, y_offsets, widths, heights, all_boxes, text_colors, font_sizes, font_file, alignment_methods, leading_list, bold_list, json.dumps(result_json, ensure_ascii=False, indent=2), image, mask_img
 
+class TextInformationMask:
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": 
+                {
+                    "image": ("IMAGE", ),
+                    "ocrRes": ("STRING", {"multiline": True}),
+                }
+                }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE")
+    RETURN_NAMES = ("image", "mask_img")
+    FUNCTION = "TextInformationMask"
+
+    CATEGORY = "postprocessingTool"
+
+    def TextInformationMask(self, image, ocrRes):
+
+        image = image[0] * 255.0
+        image = image.clamp(0, 255).numpy().round().astype(np.uint8)
+        print("image shape is", image.shape)
+
+        json_start = ocrRes.find('{')
+        json_end = ocrRes.rfind('}') + 1
+        print(ocrRes[json_start:json_end])
+        if json_start >= 0 and json_end > json_start:
+            result_json = json.loads(ocrRes[json_start:json_end])
+        else:
+            raise ValueError("Invalid JSON string")
+        result_list = result_json['text_information']
+
+        # Extract text and bounding box information
+        mask_img = np.array(Image.new("RGB", (image.shape[1], image.shape[0]), (0, 0, 0)))
+        
+        #for line in ocr_results:
+        for index in range(len(result_list)):
+             ocr_result_re = result_list[index]
+             print("ocr_result_re is ", ocr_result_re)
+             bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
+             x1, y1, x2, y2 = bbox
+
+             #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
+             overlay = image.copy()
+             alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
+
+             # 在 overlay 上画实心矩形（厚度 = -1 表示填充）
+             cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 0, 0), thickness=-1)
+
+             # 将 overlay 合成到原图（在框区域做加权）
+             cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    
+             # add red box to the original image
+             cv2.rectangle(mask_img, (x1, y1), (x2, y2), (255, 255, 255), -1)
+        
+        
+        image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+        mask_img = torch.from_numpy(np.array(mask_img).astype(np.float32) / 255.0).unsqueeze(0)
+        print("mask image shape is", mask_img.shape)
+        print("result image shape is", image.shape)
+        return image, mask_img
+
+
 def is_chinese_char(ch):
     """判断一个字符是否是中文"""
     code_point = ord(ch)
@@ -686,6 +749,7 @@ NODE_CLASS_MAPPINGS = {
     "Image OCR by PaddleOCR": ImageOCRByPaddleOCR,
     "BBOX to Mask": BBOXTOMASK,
     "OCR Result Postprocess": OcrResultPostprocess,
+    "Text Information Mask": TextInformationMask,
     "Text Image Overlay": TextImageOverLay,
     "Save Text": SaveText
 }
