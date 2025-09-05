@@ -207,21 +207,30 @@ class TextInformationMask:
         for index in range(len(result_list)):
              ocr_result_re = result_list[index]
              print("ocr_result_re is ", ocr_result_re)
-             bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
-             x1, y1, x2, y2 = bbox
 
-             #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
-             overlay = image.copy()
-             alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
+             word_list = ocr_result_re.get('word_list', [])
+             if len(word_list) > 0:
+                for word in word_list:
+                    bbox = word.get('bbox', [0, 0, 0, 0])
+                    x1, y1, x2, y2 = bbox
+                    # black areas will be inpainted
+                    cv2.rectangle(mask_img, (x1, y1), (x2, y2), 255, -1)
+             else:
+                bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
+                x1, y1, x2, y2 = bbox
 
-             # 在 overlay 上画实心矩形（厚度 = -1 表示填充）
-             cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 0, 0), thickness=-1)
+                #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
+                overlay = image.copy()
+                alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
 
-             # 将 overlay 合成到原图（在框区域做加权）
-             cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
-    
-             # add red box to the original image
-             cv2.rectangle(mask_img, (x1, y1), (x2, y2), (255, 255, 255), -1)
+                # 在 overlay 上画实心矩形（厚度 = -1 表示填充）
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 0, 0), thickness=-1)
+
+                # 将 overlay 合成到原图（在框区域做加权）
+                cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+        
+                # add red box to the original image
+                cv2.rectangle(mask_img, (x1, y1), (x2, y2), (255, 255, 255), -1)
         
         
         image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
