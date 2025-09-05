@@ -215,6 +215,15 @@ class TextInformationMask:
                     x1, y1, x2, y2 = bbox
                     # black areas will be inpainted
                     cv2.rectangle(mask_img, (x1, y1), (x2, y2), 255, -1)
+                    #add Semi-transparent masks with color red for image in box (x1,y1,x2,y2)
+                    overlay = image.copy()
+                    alpha = 0.4  # 透明度 0.0~1.0（越低越透明）
+
+                    # 在 overlay 上画实心矩形（厚度 = -1 表示填充）
+                    cv2.rectangle(overlay, (x1, y1), (x2, y2), (255, 0, 0), thickness=-1)
+
+                    # 将 overlay 合成到原图（在框区域做加权）
+                    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
              else:
                 bbox = ocr_result_re.get('bbox', [0, 0, 0, 0])
                 x1, y1, x2, y2 = bbox
